@@ -47,13 +47,29 @@ Each agent is a focused expert for one dimension of systematic crypto-futures tr
 
 ```
 src/cryptohunter/
-├── schemas.py      Canonical dataclasses + polars schemas (Candle, FundingRate, Interval)
-├── storage.py      ParquetStore — partitioned by exchange/symbol/interval/date
-├── binance.py      Binance USD-M Futures REST client (async, retry + rate-limit aware)
-├── backfill.py     Chunked, resumable, idempotent historical backfill
-├── quality.py      Gap / duplicate / monotonicity audits
-└── cli.py          Typer CLI (`cryptohunter` entry point)
+├── schemas.py         Canonical dataclasses + polars schemas (Candle, FundingRate, Interval)
+├── storage.py         ParquetStore — partitioned by exchange/symbol/interval/date
+├── config.py          pydantic-settings wrappers for env-based credentials
+├── exchanges/
+│   ├── binance.py     Binance USD-M Futures REST client (historical data source)
+│   └── lbank.py       LBank Contract REST client + LBankSigner (live execution venue)
+├── backfill.py        Chunked, resumable, idempotent historical backfill
+├── quality.py         Gap / duplicate / monotonicity audits
+└── cli.py             Typer CLI (`cryptohunter` entry point)
 ```
+
+**Dual-venue split by design:** Binance is the research / historical data source
+(full klines + fundingRate history). LBank is the live-execution venue — it
+publishes no historical candles or historical funding endpoints, only current
+snapshots (`prePositionFeeRate` on `/pub/marketData` is the current funding rate).
+Any LBank time-series must be constructed by periodically snapshotting and
+storing ourselves; do not design strategies that need deep LBank history.
+
+**LBank signing:** `LBankSigner` reproduces the PDF's documented signing
+example byte-for-byte (`tests/test_lbank_signer.py` asserts the fixture
+`sign=809133cb69a17beba0be076b99b4d90de872476e36da87978ab2889970ccd06d`).
+Private endpoints are stubbed with `NotImplementedError` until their schemas
+are published — the transport and signing pipeline is ready for one-line wire-up.
 
 **Key invariants (enforced in code, not docs):**
 
@@ -94,7 +110,9 @@ All work lives on `claude/init-project-setup-ku64P` until merged.
 ## Pending (update as the stack materializes)
 
 - WebSocket ingestion (live candles/trades/book) layered on top of the REST backfiller
-- Additional venues (Bybit, OKX, Hyperliquid) — generalize `binance.py` into `exchanges/` only when a second client lands, not before
+- LBank private endpoints (account, order placement, cancel, positions) once schemas are published; stubs already raise `NotImplementedError`
+- Periodic LBank funding-snapshot job (since no historical funding endpoint exists)
+- Additional venues (Bybit, OKX, Hyperliquid) drop into `exchanges/` alongside binance+lbank
 - Backtesting framework (lean toward custom polars-based vectorized; evaluate `nautilus-trader` for event-driven)
 - Reconciliation job: REST-candles vs stored-candles daily diff with alerting
 - CI (GitHub Actions running the gates above on PRs)

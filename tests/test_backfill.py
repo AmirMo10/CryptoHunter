@@ -8,7 +8,7 @@ from pytest_httpx import HTTPXMock
 
 from cryptohunter import backfill as bf
 from cryptohunter.backfill import backfill_candles, backfill_funding
-from cryptohunter.binance import BinanceFutures
+from cryptohunter.exchanges.binance import BinanceFutures
 from cryptohunter.schemas import Interval
 from cryptohunter.storage import ParquetStore
 

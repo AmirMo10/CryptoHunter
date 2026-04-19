@@ -10,7 +10,7 @@ import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from .binance import FUNDING_LIMIT, KLINES_LIMIT, BinanceFutures
+from .exchanges.binance import FUNDING_LIMIT, KLINES_LIMIT, BinanceFutures
 from .schemas import Interval, candles_to_df, funding_to_df
 from .storage import ParquetStore
 

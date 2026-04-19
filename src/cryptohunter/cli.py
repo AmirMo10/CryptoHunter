@@ -12,7 +12,7 @@ import typer
 from dateutil import parser as dtparser
 
 from .backfill import backfill_candles, backfill_funding
-from .binance import BinanceFutures
+from .exchanges.binance import BinanceFutures
 from .quality import audit_candles
 from .schemas import Interval
 from .storage import ParquetStore

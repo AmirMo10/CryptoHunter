@@ -21,7 +21,7 @@ from typing import Any, Self
 
 import httpx
 
-from .schemas import Candle, FundingRate, Interval
+from ..schemas import Candle, FundingRate, Interval
 
 log = logging.getLogger(__name__)
 

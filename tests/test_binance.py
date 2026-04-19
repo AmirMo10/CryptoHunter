@@ -5,7 +5,7 @@ from datetime import datetime
 import pytest
 from pytest_httpx import HTTPXMock
 
-from cryptohunter.binance import BASE_URL, BinanceFutures, BinanceFuturesError
+from cryptohunter.exchanges.binance import BASE_URL, BinanceFutures, BinanceFuturesError
 from cryptohunter.schemas import Interval
 
 from .conftest import utc
