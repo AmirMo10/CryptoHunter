@@ -6,7 +6,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **CryptoHunter** — a research and trading system for crypto perpetual-futures strategies. Goal: build, validate, and deploy risk-managed strategies across major venues (Binance, Bybit, OKX, Hyperliquid, dYdX, Deribit).
 
-The repository is in **initialization phase** — no source code, tests, or build system exist yet. The first concrete artifacts are the specialist agent definitions under `.claude/agents/`. Update this file as real code, tooling, and commands come online.
+Current stack:
+
+- **Python 3.11+**, managed with `uv` (falls back to plain `pip install -e ".[dev]"`).
+- **polars + pyarrow** for dataframes & parquet IO.
+- **httpx** (async, HTTP/2) for REST.
+- **pydantic / pydantic-settings** for config, **typer** for CLI.
+- **ruff** (lint + format), **mypy** (strict), **pytest + pytest-httpx** for tests.
+
+Data layer is the first module landed (see Architecture).
 
 ## The specialist team (`.claude/agents/`)
 
@@ -35,14 +43,58 @@ Each agent is a focused expert for one dimension of systematic crypto-futures tr
 - **API keys: trade-only, no withdrawal, IP-whitelisted.** Never commit `.env`. Never log secrets.
 - **Data reconciled before it is trusted.** Exchange REST candles vs websocket-constructed candles must match; flag gaps explicitly.
 
+## Architecture
+
+```
+src/cryptohunter/
+├── schemas.py      Canonical dataclasses + polars schemas (Candle, FundingRate, Interval)
+├── storage.py      ParquetStore — partitioned by exchange/symbol/interval/date
+├── binance.py      Binance USD-M Futures REST client (async, retry + rate-limit aware)
+├── backfill.py     Chunked, resumable, idempotent historical backfill
+├── quality.py      Gap / duplicate / monotonicity audits
+└── cli.py          Typer CLI (`cryptohunter` entry point)
+```
+
+**Key invariants (enforced in code, not docs):**
+
+- Every timestamp is timezone-aware UTC. `Candle` and `FundingRate` reject naive timestamps in `__post_init__`.
+- Bar-close convention: `open_time` = bar start, bar covers `[open_time, open_time + interval)`, `close_time` is the last millisecond.
+- Backfills are idempotent — writes dedupe on the timestamp key, so rerunning a range is a no-op.
+- Parquet partitions are daily to keep files small and enable pushdown via `pl.scan_parquet`.
+- `ParquetStore.write_candles` returns **rows written in this call**, not cumulative file size.
+
+## Commands
+
+```bash
+# one-time setup
+uv venv --python 3.11
+uv pip install -e ".[dev]"
+
+# dev loop
+.venv/bin/ruff check src tests              # lint
+.venv/bin/ruff format src tests             # format
+.venv/bin/mypy src                          # types (strict)
+.venv/bin/pytest -q                         # tests
+.venv/bin/pytest tests/test_storage.py::test_write_and_read_candles   # single test
+
+# CLI (reaches real Binance; use a throwaway range while testing)
+.venv/bin/cryptohunter backfill-candles --symbol BTCUSDT --interval 1h \
+    --start 2024-01-01 --end 2024-02-01
+.venv/bin/cryptohunter backfill-funding  --symbol BTCUSDT \
+    --start 2024-01-01 --end 2024-02-01
+.venv/bin/cryptohunter audit --symbol BTCUSDT --interval 1h
+```
+
+Everything under `data/` is gitignored — parquet partitions live there.
+
 ## Branch
 
 All work lives on `claude/init-project-setup-ku64P` until merged.
 
-## Pending (update this section as the stack materializes)
+## Pending (update as the stack materializes)
 
-- Language / runtime choice (Python + polars/pandas + asyncio is the default starting point)
-- Backtesting framework (custom vs. `vectorbt` / `nautilus-trader` / `backtrader`)
-- Exchange-client library (`ccxt` for breadth; native clients for latency-sensitive paths)
-- Storage (parquet for cold, TimescaleDB/ClickHouse for warm)
-- CI, lint, test commands — none yet
+- WebSocket ingestion (live candles/trades/book) layered on top of the REST backfiller
+- Additional venues (Bybit, OKX, Hyperliquid) — generalize `binance.py` into `exchanges/` only when a second client lands, not before
+- Backtesting framework (lean toward custom polars-based vectorized; evaluate `nautilus-trader` for event-driven)
+- Reconciliation job: REST-candles vs stored-candles daily diff with alerting
+- CI (GitHub Actions running the gates above on PRs)
